@@ -1,27 +1,49 @@
+use crate::consts::*;
 use aes::cipher::{IvSizeUser, KeyIvInit, KeySizeUser, StreamCipher};
+use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
 use std::collections::VecDeque;
-use crate::consts::*;
 
 type Aes128Ctr = ctr::Ctr64BE<aes::Aes128>;
 
-#[derive(Debug, Eq, PartialEq)]
-pub struct Opening(pub [u8; OPENING_SIZE]);
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+// pub struct Opening(pub(crate) [u8; OPENING_SIZE]);
+pub struct Opening {
+    #[serde(with = "hex::serde")]
+    pub(crate) inner: [u8; OPENING_SIZE],
+}
 
-#[derive(Debug, Eq, PartialEq)]
-pub struct Commitment([u8; DIGEST_SIZE]);
+impl Opening {
+    pub(crate) fn new(c: [u8; OPENING_SIZE]) -> Self {
+        Self { inner: c }
+    }
+}
+
+// Usually we'd use Commitment(pub(crate) [u8; DIGEST_SIZE]),
+// but it seems tricky to make serde use hex encoding on the .0 field
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Commitment {
+    #[serde(with = "hex::serde")]
+    pub(crate) inner: [u8; DIGEST_SIZE],
+}
+
+impl Commitment {
+    fn new(c: [u8; DIGEST_SIZE]) -> Self {
+        Self { inner: c }
+    }
+}
 
 pub(crate) fn hash1(delta_rs: &[u64], coms: &[Commitment]) -> [u8; DIGEST_SIZE] {
     let mut hasher = Sha3_256::new();
-    hasher.update(H1_PREFIX_DELTA);
+    hasher.update(PREFIX_H1_DELTA);
     hasher.update(&delta_rs.len().to_le_bytes());
     for delta_r in delta_rs {
         hasher.update(&delta_r.to_le_bytes());
     }
-    hasher.update(H1_PREFIX_COM);
+    hasher.update(PREFIX_H1_COM);
     hasher.update(&coms.len().to_le_bytes());
     for com in coms {
-        hasher.update(&com.0);
+        hasher.update(&com.inner);
     }
 
     let result = hasher.finalize();
@@ -30,7 +52,7 @@ pub(crate) fn hash1(delta_rs: &[u64], coms: &[Commitment]) -> [u8; DIGEST_SIZE] 
 
 pub(crate) fn hash2(h1s: &[[u8; DIGEST_SIZE]]) -> [u8; DIGEST_SIZE] {
     let mut hasher = Sha3_256::new();
-    hasher.update(H2_PREFIX);
+    hasher.update(PREFIX_H2);
     hasher.update(&h1s.len().to_le_bytes());
     for h1 in h1s {
         hasher.update(h1);
@@ -43,11 +65,11 @@ pub(crate) fn hash2(h1s: &[[u8; DIGEST_SIZE]]) -> [u8; DIGEST_SIZE] {
 pub(crate) fn commit(value: &[u8], opening: &Opening) -> Commitment {
     debug_assert_eq!(Sha3_256::output_size(), DIGEST_SIZE);
     let mut hasher = Sha3_256::new();
-    hasher.update(opening.0);
+    hasher.update(opening.inner);
     hasher.update(value);
     let result = hasher.finalize();
     // TODO avoid copying, change to generic array?
-    Commitment(result.as_slice().try_into().unwrap())
+    Commitment::new(result.as_slice().try_into().unwrap())
 }
 
 pub(crate) fn verify(value: &[u8], opening: &Opening, commitment: &Commitment) -> bool {
@@ -56,7 +78,11 @@ pub(crate) fn verify(value: &[u8], opening: &Opening, commitment: &Commitment) -
 }
 
 /// TODO: better to output vec of arrays instead of vec of bytes
-pub(crate) fn prg_aes_ctr(seed: &[u8; KEY_SIZE], iv: &[u8; BLOCK_SIZE], block_count: usize) -> Vec<u8> {
+pub(crate) fn prg_aes_ctr(
+    seed: &[u8; KEY_SIZE],
+    iv: &[u8; BLOCK_SIZE],
+    block_count: usize,
+) -> Vec<u8> {
     let mut cipher = Aes128Ctr::new(seed.into(), iv.into());
     debug_assert_eq!(Aes128Ctr::key_size(), KEY_SIZE);
     debug_assert_eq!(Aes128Ctr::iv_size(), BLOCK_SIZE);
@@ -67,16 +93,16 @@ pub(crate) fn prg_aes_ctr(seed: &[u8; KEY_SIZE], iv: &[u8; BLOCK_SIZE], block_co
 
 pub(crate) fn prg_u64(seed: &[u8; KEY_SIZE], iv: &[u8; BLOCK_SIZE], n: usize) -> Vec<u64> {
     assert!(n >= 1);
-    let block_count = if (n*8 % BLOCK_SIZE) == 0 {
-        n*8 / BLOCK_SIZE
+    let block_count = if (n * 8 % BLOCK_SIZE) == 0 {
+        n * 8 / BLOCK_SIZE
     } else {
-        n*8 / BLOCK_SIZE + 1
+        n * 8 / BLOCK_SIZE + 1
     };
     let blocks = prg_aes_ctr(seed, iv, block_count);
     debug_assert_eq!(blocks.len() % 8, 0);
     let mut out = vec![0u64; n];
     for i in (0..blocks.len()).step_by(8) {
-        out[i/8] = u64::from_le_bytes(blocks[i..i+8].try_into().expect("must be 8 bytes"));
+        out[i / 8] = u64::from_le_bytes(blocks[i..i + 8].try_into().expect("must be 8 bytes"));
     }
     out
 }
@@ -99,14 +125,21 @@ pub(crate) fn prg_bin(seed: &[u8; KEY_SIZE], iv: &[u8; BLOCK_SIZE], n: usize) ->
     unreachable!()
 }
 
-pub(crate) fn prg_double(seed: &[u8; KEY_SIZE], iv: &[u8; BLOCK_SIZE]) -> ([u8; BLOCK_SIZE], [u8; BLOCK_SIZE]) {
+pub(crate) fn prg_double(
+    seed: &[u8; KEY_SIZE],
+    iv: &[u8; BLOCK_SIZE],
+) -> ([u8; BLOCK_SIZE], [u8; BLOCK_SIZE]) {
     let mut left = prg_aes_ctr(seed, iv, 2);
     let right = left.split_off(BLOCK_SIZE);
     (left.try_into().unwrap(), right.try_into().unwrap())
 }
 
 /// Easier to build an unbalanced tree when compared to the recursive method.
-pub(crate) fn prg_tree(seed: &[u8; KEY_SIZE], iv: &[u8; BLOCK_SIZE], n: usize) -> Vec<[u8; BLOCK_SIZE]> {
+pub(crate) fn prg_tree(
+    seed: &[u8; KEY_SIZE],
+    iv: &[u8; BLOCK_SIZE],
+    n: usize,
+) -> Vec<[u8; BLOCK_SIZE]> {
     let mut out = VecDeque::with_capacity(n);
     while out.len() < n {
         if out.is_empty() {
@@ -114,9 +147,7 @@ pub(crate) fn prg_tree(seed: &[u8; KEY_SIZE], iv: &[u8; BLOCK_SIZE], n: usize) -
             out.push_back(*seed);
             continue;
         }
-        let new_seed: [u8; KEY_SIZE] = out
-            .pop_front()
-            .expect("deque should be initialized here");
+        let new_seed: [u8; KEY_SIZE] = out.pop_front().expect("deque should be initialized here");
         let (left, right) = prg_double(&new_seed, iv);
         out.push_back(left);
         out.push_back(right);
@@ -175,4 +206,3 @@ mod tests {
         assert_ne!(out[0], out[1]);
     }
 }
-

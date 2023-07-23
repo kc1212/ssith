@@ -3,8 +3,8 @@ pub(crate) const BLOCK_SIZE: usize = 16;
 pub(crate) const OPENING_SIZE: usize = 16;
 pub(crate) const DIGEST_SIZE: usize = 32;
 
-pub(crate) const H1_PREFIX_DELTA: &str = "delta_rs";
-pub(crate) const H1_PREFIX_COM: &str   = "commitme";
-pub(crate) const H2_PREFIX: &str       = "h1s-----";
-pub(crate) const WITNESS_PREFIX: &str  = "witness-";
-pub(crate) const INSTANCE_PREFIX: &str = "instance";
+pub(crate) const PREFIX_H1_DELTA: [u8; 8] = *b"delta_rs";
+pub(crate) const PREFIX_H1_COM: [u8; 8] = *b"commitme";
+pub(crate) const PREFIX_H2: [u8; 8] = *b"h1s-----";
+pub(crate) const PREFIX_WITNESS: [u8; 8] = *b"witness-";
+pub(crate) const PREFIX_INSTANCE: [u8; 8] = *b"instance";
