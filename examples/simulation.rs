@@ -7,5 +7,6 @@ fn main() {
     let mut rng = ChaChaRng::from_entropy();
     let prover = Prover::new(&mut rng, param);
     let step1_state = prover.step1();
-    println!("{}", serde_json::to_string(&step1_state).unwrap());
+    println!("{}", serde_json::to_string_pretty(&prover).unwrap());
+    println!("{}", serde_json::to_string_pretty(&step1_state).unwrap());
 }

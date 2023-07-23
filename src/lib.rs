@@ -7,10 +7,10 @@ use consts::{BLOCK_SIZE, DIGEST_SIZE};
 use errors::*;
 use primitives::*;
 use rand_core::{CryptoRng, RngCore};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use sha3::{Digest, Sha3_256};
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Serialize)]
 /// Parameter for the subset sum MPCitH protocol.
 pub struct Param {
     /// Dimension of the SSP (n)
@@ -34,7 +34,7 @@ impl Default for Param {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 /// The witness (solution) to the subset sum problem.
 pub struct Witness(Vec<u8>);
 
@@ -44,7 +44,7 @@ impl Witness {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 /// The instance of the subset sum problem.
 pub struct Instance {
     weights: Vec<u64>,
@@ -97,7 +97,7 @@ fn new_witness_instance<R: RngCore + CryptoRng>(rng: &mut R, param: Param) -> (W
     (Witness(w_vec), Instance { weights, t })
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
 /// The prover of the subset sum MPCitH protocol.
 pub struct Prover {
     witness: Witness,
@@ -127,7 +127,7 @@ fn hash_witness_instance(witness: &Witness, instance: &Instance) -> [u8; BLOCK_S
 }
 
 /// For each C&C parameter
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
 pub struct ProverStateInner {
     #[serde(with = "hex::serde")]
     mseed_inner: [u8; BLOCK_SIZE],
@@ -144,7 +144,7 @@ pub struct ProverStateInner {
     h1: [u8; DIGEST_SIZE],
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Debug)]
 #[serde(transparent)]
 /// WrapperArray is created so that serde knows how to
 /// (de)serialize a vector of arrays using hex.
@@ -159,9 +159,10 @@ impl WrapperArray {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
 pub struct ProverState {
     step1_state: Vec<ProverStateInner>,
+    #[serde(with = "hex::serde")]
     h: [u8; DIGEST_SIZE],
 }
 

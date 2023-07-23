@@ -1,17 +1,25 @@
 use crate::consts::*;
 use aes::cipher::{Block, IvSizeUser, KeyIvInit, KeySizeUser, StreamCipherCore};
-use serde::{Deserialize, Serialize};
+use serde::{Serialize, Serializer};
 use sha3::{Digest, Sha3_256};
 use std::collections::VecDeque;
 
 type Aes128Ctr = ctr::CtrCore<aes::Aes128, ctr::flavors::Ctr64BE>;
 type PRGBlock = Block<aes::Aes128>;
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq)]
 /// A hash-based opening of a commitment, created by the prover.
 pub struct Opening {
-    #[serde(with = "hex::serde")]
     pub(crate) inner: [u8; OPENING_SIZE],
+}
+
+impl Serialize for Opening {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        hex::serde::serialize(self.inner, serializer)
+    }
 }
 
 impl Opening {
@@ -20,13 +28,21 @@ impl Opening {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq)]
 /// A hash-based commitment, created by the prover.
 pub struct Commitment {
     // Usually we'd use Commitment(pub(crate) [u8; DIGEST_SIZE]),
     // but it seems tricky to make serde use hex encoding on the .0 field
-    #[serde(with = "hex::serde")]
     pub(crate) inner: [u8; DIGEST_SIZE],
+}
+
+impl Serialize for Commitment {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        hex::serde::serialize(self.inner, serializer)
+    }
 }
 
 impl Commitment {
@@ -99,7 +115,7 @@ pub(crate) fn prg_aes_ctr(
 
 /// An AES counter mode based PRG that generates a vector of u64.
 pub(crate) fn prg_u64(seed: &[u8; KEY_SIZE], iv: &[u8; BLOCK_SIZE], n: usize) -> Vec<u64> {
-    // TODO: we're generating one u64 from one block
+    // TODO: we're generating one u64 from one block, can be improved
     let blocks = prg_aes_ctr(seed, iv, n);
     blocks
         .into_iter()
@@ -174,6 +190,9 @@ mod tests {
 
         let bad_opening = Opening::new([2u8; OPENING_SIZE]);
         assert!(!verify(&value, &bad_opening, &commitment));
+
+        let bad_value = [0u8, 1, 2, 2];
+        assert!(!verify(&bad_value, &opening, &commitment));
     }
 
     #[test]
@@ -190,14 +209,20 @@ mod tests {
         let seed2 = [1u8; KEY_SIZE];
         let out3 = prg_aes_ctr(&seed2, &iv, 1);
         assert_ne!(out1, out3);
+    }
 
-        let out4 = prg_bin(&seed, &iv, 1);
-        assert_eq!(out4.len(), 1);
-        assert!(out4[0] == 0 || out4[0] == 1);
+    #[test]
+    fn test_prg_bin() {
+        let seed = [0u8; KEY_SIZE];
+        let iv = [0u8; BLOCK_SIZE];
 
-        let out5 = prg_bin(&seed, &iv, BLOCK_SIZE * 8);
-        assert_eq!(out5.len(), BLOCK_SIZE * 8);
-        for b in out5 {
+        let out1 = prg_bin(&seed, &iv, 1);
+        assert_eq!(out1.len(), 1);
+        assert!(out1[0] == 0 || out1[0] == 1);
+
+        let out2 = prg_bin(&seed, &iv, BLOCK_SIZE * 8);
+        assert_eq!(out2.len(), BLOCK_SIZE * 8);
+        for b in out2 {
             assert!(b == 0 || b == 1);
         }
     }
