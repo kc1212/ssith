@@ -5,7 +5,7 @@ use sha3::{Digest, Sha3_256};
 use std::collections::VecDeque;
 
 type Aes128Ctr = ctr::CtrCore<aes::Aes128, ctr::flavors::Ctr64BE>;
-type PRGBlock = Block<aes::Aes128>;
+type PrgBlock = Block<aes::Aes128>;
 
 #[derive(Debug, Eq, PartialEq)]
 /// A hash-based opening of a commitment, created by the prover.
@@ -105,7 +105,7 @@ pub(crate) fn prg_aes_ctr(
     let mut cipher = Aes128Ctr::new(seed.into(), iv.into());
     debug_assert_eq!(Aes128Ctr::key_size(), KEY_SIZE);
     debug_assert_eq!(Aes128Ctr::iv_size(), BLOCK_SIZE);
-    let mut blocks = vec![PRGBlock::default(); block_count];
+    let mut blocks = vec![PrgBlock::default(); block_count];
     cipher.apply_keystream_blocks(&mut blocks);
     blocks
         .into_iter()
@@ -115,12 +115,28 @@ pub(crate) fn prg_aes_ctr(
 
 /// An AES counter mode based PRG that generates a vector of u64.
 pub(crate) fn prg_u64(seed: &[u8; KEY_SIZE], iv: &[u8; BLOCK_SIZE], n: usize) -> Vec<u64> {
-    // TODO: we're generating one u64 from one block, can be improved
-    let blocks = prg_aes_ctr(seed, iv, n);
-    blocks
-        .into_iter()
-        .map(|block| u64::from_le_bytes(block[..8].try_into().expect("must be 8 bytes")))
-        .collect()
+    const U64_BYTES: usize = u64::BITS as usize / 8;
+    assert_eq!(BLOCK_SIZE % U64_BYTES, 0);
+    let u64_per_block = BLOCK_SIZE / U64_BYTES;
+    let block_count = (n + u64_per_block - 1) / u64_per_block;
+    let blocks = prg_aes_ctr(seed, iv, block_count);
+
+    let mut out = vec![0u64; n];
+    for (i, block) in blocks.into_iter().enumerate() {
+        let per_block = if i < block_count - 1 {
+            u64_per_block
+        } else {
+            u64_per_block - (u64_per_block * block_count - n)
+        };
+        for j in 0..per_block {
+            out[i * u64_per_block + j] = u64::from_le_bytes(
+                block[j * U64_BYTES..j * U64_BYTES + 8]
+                    .try_into()
+                    .expect("must be 8 bytes"),
+            );
+        }
+    }
+    out
 }
 
 /// An AES counter mode based PRG that generates bits
@@ -209,6 +225,17 @@ mod tests {
         let seed2 = [1u8; KEY_SIZE];
         let out3 = prg_aes_ctr(&seed2, &iv, 1);
         assert_ne!(out1, out3);
+    }
+
+    #[test]
+    fn test_prg_u64() {
+        let seed = [0u8; KEY_SIZE];
+        let iv = [0u8; BLOCK_SIZE];
+        let out1 = prg_u64(&seed, &iv, 1);
+        assert_eq!(out1.len(), 1);
+
+        let out2 = prg_u64(&seed, &iv, 8);
+        assert_eq!(out2.len(), 8);
     }
 
     #[test]

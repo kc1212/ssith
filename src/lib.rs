@@ -3,7 +3,6 @@ mod errors;
 mod primitives;
 
 use consts::*;
-use consts::{BLOCK_SIZE, DIGEST_SIZE};
 use errors::*;
 use primitives::*;
 use rand_core::{CryptoRng, RngCore};
