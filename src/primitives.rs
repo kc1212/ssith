@@ -1,13 +1,14 @@
 use crate::consts::*;
-use aes::cipher::{IvSizeUser, KeyIvInit, KeySizeUser, StreamCipher};
+use aes::cipher::{Block, IvSizeUser, KeyIvInit, KeySizeUser, StreamCipherCore};
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
 use std::collections::VecDeque;
 
-type Aes128Ctr = ctr::Ctr64BE<aes::Aes128>;
+type Aes128Ctr = ctr::CtrCore<aes::Aes128, ctr::flavors::Ctr64BE>;
+type PRGBlock = Block<aes::Aes128>;
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
-// pub struct Opening(pub(crate) [u8; OPENING_SIZE]);
+/// A hash-based opening of a commitment, created by the prover.
 pub struct Opening {
     #[serde(with = "hex::serde")]
     pub(crate) inner: [u8; OPENING_SIZE],
@@ -19,16 +20,17 @@ impl Opening {
     }
 }
 
-// Usually we'd use Commitment(pub(crate) [u8; DIGEST_SIZE]),
-// but it seems tricky to make serde use hex encoding on the .0 field
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+/// A hash-based commitment, created by the prover.
 pub struct Commitment {
+    // Usually we'd use Commitment(pub(crate) [u8; DIGEST_SIZE]),
+    // but it seems tricky to make serde use hex encoding on the .0 field
     #[serde(with = "hex::serde")]
     pub(crate) inner: [u8; DIGEST_SIZE],
 }
 
 impl Commitment {
-    fn new(c: [u8; DIGEST_SIZE]) -> Self {
+    pub(crate) fn new(c: [u8; DIGEST_SIZE]) -> Self {
         Self { inner: c }
     }
 }
@@ -77,36 +79,36 @@ pub(crate) fn verify(value: &[u8], opening: &Opening, commitment: &Commitment) -
     actual == *commitment
 }
 
-/// TODO: better to output vec of arrays instead of vec of bytes
+/// An AES counter mode based PRG.
+/// Beware that the counter type is u64.
 pub(crate) fn prg_aes_ctr(
     seed: &[u8; KEY_SIZE],
     iv: &[u8; BLOCK_SIZE],
     block_count: usize,
-) -> Vec<u8> {
+) -> Vec<[u8; BLOCK_SIZE]> {
     let mut cipher = Aes128Ctr::new(seed.into(), iv.into());
     debug_assert_eq!(Aes128Ctr::key_size(), KEY_SIZE);
     debug_assert_eq!(Aes128Ctr::iv_size(), BLOCK_SIZE);
-    let mut out = vec![0u8; block_count * BLOCK_SIZE];
-    cipher.apply_keystream(&mut out);
-    out
+    let mut blocks = vec![PRGBlock::default(); block_count];
+    cipher.apply_keystream_blocks(&mut blocks);
+    blocks
+        .into_iter()
+        .map(|gblock| gblock.as_slice().try_into().unwrap())
+        .collect()
 }
 
+/// An AES counter mode based PRG that generates a vector of u64.
 pub(crate) fn prg_u64(seed: &[u8; KEY_SIZE], iv: &[u8; BLOCK_SIZE], n: usize) -> Vec<u64> {
-    assert!(n >= 1);
-    let block_count = if (n * 8 % BLOCK_SIZE) == 0 {
-        n * 8 / BLOCK_SIZE
-    } else {
-        n * 8 / BLOCK_SIZE + 1
-    };
-    let blocks = prg_aes_ctr(seed, iv, block_count);
-    debug_assert_eq!(blocks.len() % 8, 0);
-    let mut out = vec![0u64; n];
-    for i in (0..blocks.len()).step_by(8) {
-        out[i / 8] = u64::from_le_bytes(blocks[i..i + 8].try_into().expect("must be 8 bytes"));
-    }
-    out
+    // TODO: we're generating one u64 from one block
+    let blocks = prg_aes_ctr(seed, iv, n);
+    blocks
+        .into_iter()
+        .map(|block| u64::from_le_bytes(block[..8].try_into().expect("must be 8 bytes")))
+        .collect()
 }
 
+/// An AES counter mode based PRG that generates bits
+/// every bit is represented by a u8.
 pub(crate) fn prg_bin(seed: &[u8; KEY_SIZE], iv: &[u8; BLOCK_SIZE], n: usize) -> Vec<u8> {
     assert!(n >= 1);
     let block_count = n / BLOCK_SIZE + 1;
@@ -114,27 +116,31 @@ pub(crate) fn prg_bin(seed: &[u8; KEY_SIZE], iv: &[u8; BLOCK_SIZE], n: usize) ->
     let mut out = vec![0u8; n];
     let mut i = 0usize;
     for block in blocks {
-        for shift in 0u8..8 {
-            out[i] = (block >> shift) & 1;
-            i += 1;
-            if i == n {
-                return out;
+        for b in block {
+            for shift in 0u8..8 {
+                out[i] = (b >> shift) & 1;
+                i += 1;
+                if i == n {
+                    return out;
+                }
             }
         }
     }
     unreachable!()
 }
 
+/// A length doubling PRG based on AES counter mode.
 pub(crate) fn prg_double(
     seed: &[u8; KEY_SIZE],
     iv: &[u8; BLOCK_SIZE],
 ) -> ([u8; BLOCK_SIZE], [u8; BLOCK_SIZE]) {
-    let mut left = prg_aes_ctr(seed, iv, 2);
-    let right = left.split_off(BLOCK_SIZE);
-    (left.try_into().unwrap(), right.try_into().unwrap())
+    let out = prg_aes_ctr(seed, iv, 2);
+    (out[0], out[1])
 }
 
-/// Easier to build an unbalanced tree when compared to the recursive method.
+/// A GGM tree PRG based on AES counter mode.
+/// Internally, it is implemented using a queue since it is
+/// easier to build an unbalanced tree when compared to the recursive method.
 pub(crate) fn prg_tree(
     seed: &[u8; KEY_SIZE],
     iv: &[u8; BLOCK_SIZE],
@@ -162,11 +168,11 @@ mod tests {
     #[test]
     fn test_commit() {
         let value = [0u8, 1, 2, 3];
-        let opening = Opening([1u8; OPENING_SIZE]);
+        let opening = Opening::new([1u8; OPENING_SIZE]);
         let commitment = commit(&value, &opening);
         assert!(verify(&value, &opening, &commitment));
 
-        let bad_opening = Opening([2u8; OPENING_SIZE]);
+        let bad_opening = Opening::new([2u8; OPENING_SIZE]);
         assert!(!verify(&value, &bad_opening, &commitment));
     }
 
@@ -175,10 +181,11 @@ mod tests {
         let seed = [0u8; KEY_SIZE];
         let iv = [0u8; BLOCK_SIZE];
         let out1 = prg_aes_ctr(&seed, &iv, 1);
-        assert_eq!(out1.len(), BLOCK_SIZE);
+        assert_eq!(out1.len(), 1);
+        assert_eq!(out1[0].len(), BLOCK_SIZE);
 
         let out2 = prg_aes_ctr(&seed, &iv, 2);
-        assert_eq!(out2.len(), BLOCK_SIZE * 2);
+        assert_eq!(out2.len(), 2);
 
         let seed2 = [1u8; KEY_SIZE];
         let out3 = prg_aes_ctr(&seed2, &iv, 1);

@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+/// Parameter for the subset sum MPCitH protocol.
 pub struct Param {
     /// Dimension of the SSP (n)
     ssp_dimension: usize,
@@ -22,8 +23,8 @@ pub struct Param {
     abort_param: usize,
 }
 
-impl Param {
-    pub fn default() -> Self {
+impl Default for Param {
+    fn default() -> Self {
         Param {
             ssp_dimension: 128,
             party_count: 4,
@@ -34,6 +35,7 @@ impl Param {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// The witness (solution) to the subset sum problem.
 pub struct Witness(Vec<u8>);
 
 impl Witness {
@@ -43,6 +45,7 @@ impl Witness {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// The instance of the subset sum problem.
 pub struct Instance {
     weights: Vec<u64>,
     t: u64,
@@ -95,6 +98,7 @@ fn new_witness_instance<R: RngCore + CryptoRng>(rng: &mut R, param: Param) -> (W
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+/// The prover of the subset sum MPCitH protocol.
 pub struct Prover {
     witness: Witness,
     instance: Instance,
@@ -129,7 +133,8 @@ pub struct ProverStateInner {
     mseed_inner: [u8; BLOCK_SIZE],
     #[serde(with = "hex::serde")]
     rs: Vec<u8>,
-    seeds: Vec<WrapperArray>, // Vec<[u8; BLOCK_SIZE]>,
+    // usually it should be Vec<[u8; BLOCK_SIZE]>,
+    seeds: Vec<WrapperArray>,
     rhos: Vec<Opening>,
     r_shares: Vec<Vec<u64>>,
     coms: Vec<Commitment>,
@@ -178,6 +183,9 @@ impl ProverState {
 }
 
 impl Prover {
+    /// Create a new prover with a random witness-instance pair,
+    /// generated using `rng` according to parameters `param`.
+    /// Internally, the master seed is also sampled from the `rng`.
     pub fn new<R: RngCore + CryptoRng>(rng: &mut R, param: Param) -> Self {
         let (witness, instance) = new_witness_instance(rng, param);
         let mut mseed = [0u8; BLOCK_SIZE];
@@ -185,6 +193,9 @@ impl Prover {
         Self::from_witness_instance_unchecked(witness, instance, mseed, param)
     }
 
+    /// Create a new prover from a given witness-instance pair.
+    /// This function performs a sanity check and outputs
+    /// an error if the check fails.
     pub fn from_witness_instance(
         witness: Witness,
         instance: Instance,
@@ -213,6 +224,7 @@ impl Prover {
         }
     }
 
+    /// Run the first step of the protocol and output the prover state.
     pub fn step1(&self) -> ProverState {
         let mut h1s = Vec::with_capacity(self.param.cnc_param);
         let mut state = ProverState::new();
