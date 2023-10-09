@@ -84,14 +84,34 @@ pub(crate) fn hash3<J>(rs_tilde: &[u8], t_shares: J) -> [u8; DIGEST_SIZE]
 where
     J: Iterator<Item = u64>,
 {
-    unimplemented!()
+    let mut hasher = Sha3_256::new();
+    hasher.update(PREFIX_H3);
+    hasher.update(&rs_tilde.len().to_le_bytes());
+    hasher.update(rs_tilde);
+
+    // TODO add a prefix for number of t_shares for domain separation
+    for t_share in t_shares {
+        hasher.update(&t_share.to_le_bytes());
+    }
+
+    let result = hasher.finalize();
+    result.as_slice().try_into().unwrap()
 }
 
 pub(crate) fn hash4<I>(h_primes: I) -> [u8; DIGEST_SIZE]
 where
     I: Iterator<Item = [u8; DIGEST_SIZE]>,
 {
-    unimplemented!()
+    let mut hasher = Sha3_256::new();
+    hasher.update(PREFIX_H4);
+
+    // TODO add a prefix for number of h_prime for domain separation
+    for h_prime in h_primes {
+        hasher.update(&h_prime);
+    }
+
+    let result = hasher.finalize();
+    result.as_slice().try_into().unwrap()
 }
 
 pub(crate) fn commit(value: &[u8], opening: &Opening) -> Commitment {

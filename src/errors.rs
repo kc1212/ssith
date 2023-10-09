@@ -11,10 +11,14 @@ pub enum InternalError {
     BadInstanceLength,
     #[error("bad abort param, must be less than 64")]
     BadAbortParam,
+    #[error("bad challenge length")]
+    BadChallengeLength,
     #[error("protocol error, unexpected message")]
     ProtocolError,
     #[error(transparent)]
     RecvError(#[from] channel::RecvError),
     #[error(transparent)]
     SendErrorProverMsg(#[from] channel::SendError<crate::ProverMsg>),
+    #[error(transparent)]
+    SendErrorVerifierMsg(#[from] channel::SendError<crate::VerifierMsg>),
 }

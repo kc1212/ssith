@@ -2,6 +2,7 @@ mod consts;
 mod errors;
 mod primitives;
 pub mod prover;
+pub mod verifier;
 
 use consts::*;
 use errors::*;
@@ -20,6 +21,8 @@ pub struct Param {
     cnc_param: usize,
     /// Parameter for abort in bits, i.e., log A
     abort_param: usize,
+    /// The number of reps (tau)
+    rep_param: usize,
 }
 
 impl Default for Param {
@@ -29,6 +32,7 @@ impl Default for Param {
             party_count: 4,
             cnc_param: 100,
             abort_param: 14,
+            rep_param: 24,
         }
     }
 }
@@ -123,7 +127,7 @@ pub enum ProverMsg {
 #[derive(Clone, PartialEq, Eq)]
 pub enum VerifierMsg {
     Step1(Vec<usize>),
-    Step2(Vec<u64>),
+    Step2(Vec<usize>),
 }
 
 #[cfg(test)]

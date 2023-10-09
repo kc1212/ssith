@@ -190,8 +190,12 @@ impl Prover {
         &self,
         state: &ProverState,
         chalJ: &Vec<usize>,
-    ) -> ([u8; DIGEST_SIZE], Vec<[u8; BLOCK_SIZE]>) {
-        // TODO check length of chalJ
+    ) -> Result<([u8; DIGEST_SIZE], Vec<[u8; BLOCK_SIZE]>), InternalError> {
+        // check length of chalJ
+        if chalJ.len() != self.param.rep_param {
+            return Err(InternalError::BadChallengeLength);
+        }
+
         // TODO check that J \subset [M]
 
         let h_primes = chalJ.iter().map(|e| {
@@ -236,10 +240,10 @@ impl Prover {
                 state.step1_state[*e].mseed_inner
             })
             .collect();
-        (h_prime, mseeds)
+        Ok((h_prime, mseeds))
     }
 
-    pub fn step3(&self, state: &ProverState, ells: &[u64]) {
+    pub fn step3(&self, state: &ProverState, ells: &[usize]) {
         // not implemented yet
     }
 }
@@ -266,7 +270,7 @@ impl IProver {
             _ => return Err(InternalError::ProtocolError),
         };
 
-        let (h_prime, mseeds) = self.prover.step2(&state, &chalJ);
+        let (h_prime, mseeds) = self.prover.step2(&state, &chalJ)?;
         self.tx.send(ProverMsg::Step2((h_prime, mseeds)))?;
 
         // receive the second challenge L
