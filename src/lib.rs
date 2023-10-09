@@ -34,6 +34,7 @@ impl Default for Param {
 }
 
 #[derive(Debug, Clone, Serialize)]
+// TODO impl deref
 /// The witness (solution) to the subset sum problem.
 pub struct Witness(Vec<u8>);
 
@@ -293,6 +294,51 @@ impl Prover {
         state.set_h(h);
         // TODO: possibly we need to store the state in the Prover object
         state
+    }
+
+    pub fn step2(&self, state: &ProverState, chalJ: &Vec<usize>) -> ([u8; DIGEST_SIZE], Vec<[u8; BLOCK_SIZE]>) {
+        // TODO check length of chalJ
+        // TODO check that J \subset [M]
+
+        let h_primes = chalJ.iter().map(|e| {
+            let xs_tilde: Vec<_> = self
+                .witness
+                .0
+                .iter()
+                .zip(state.step1_state[*e].rs.iter())
+                .map(|(a, b)| a ^ b).collect();
+
+            let t_shares = state.step1_state[*e].r_shares.iter().map(|r_share| {
+                // x_share is [x], per c&c and per party i
+                let x_share = xs_tilde
+                    .iter()
+                    .zip(r_share)
+                    .map(|(x_tilde, r_share)| {
+                        u64::from(1u8 - x_tilde) * r_share
+                            + u64::from(*x_tilde) * (1u64.wrapping_sub(*r_share))
+                    });
+                let t_share: u64 = 
+                    self.instance.weights.iter().zip(x_share).map(|(w, x)| {
+                        *w*x
+                    }).sum();
+                t_share
+            });
+
+            // hash shares and xs_tilde
+            // TODO: remove collect and hash incrementally
+            let h_prime = hash3(&xs_tilde, t_shares);
+            h_prime
+        });
+        
+        // hash all the h_primes
+        let h_prime = hash4(h_primes);
+        
+        // find the mseeds that are not in chalJ
+        let mseeds: Vec<_> = chalJ.iter().map(|e| {
+            // TODO: this is wrong, need e \notin J
+            state.step1_state[*e].mseed_inner
+        }).collect();
+        (h_prime, mseeds)
     }
 }
 
