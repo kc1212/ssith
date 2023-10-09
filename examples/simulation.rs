@@ -1,5 +1,6 @@
 use rand_chacha::ChaChaRng;
 use rand_core::SeedableRng;
+use ssith::prover::*;
 use ssith::*;
 
 fn main() {

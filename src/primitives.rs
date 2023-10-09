@@ -80,16 +80,16 @@ pub(crate) fn hash2(h1s: &[[u8; DIGEST_SIZE]]) -> [u8; DIGEST_SIZE] {
     result.as_slice().try_into().unwrap()
 }
 
-pub(crate) fn hash3<J>(rs_tilde: &[u8], t_shares: J) -> [u8; DIGEST_SIZE] 
-where 
+pub(crate) fn hash3<J>(rs_tilde: &[u8], t_shares: J) -> [u8; DIGEST_SIZE]
+where
     J: Iterator<Item = u64>,
 {
     unimplemented!()
 }
 
-pub(crate) fn hash4<I>(h_primes: I) -> [u8; DIGEST_SIZE] 
+pub(crate) fn hash4<I>(h_primes: I) -> [u8; DIGEST_SIZE]
 where
-    I: Iterator<Item = [u8; DIGEST_SIZE]>
+    I: Iterator<Item = [u8; DIGEST_SIZE]>,
 {
     unimplemented!()
 }
