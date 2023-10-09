@@ -1,4 +1,5 @@
 use crossbeam::channel;
+use std::thread;
 use thiserror::Error;
 
 #[derive(Error, Debug, Eq, PartialEq)]

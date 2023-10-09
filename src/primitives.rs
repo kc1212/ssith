@@ -51,6 +51,29 @@ impl Commitment {
     }
 }
 
+pub(crate) fn fs_hash1(h: &[u8; DIGEST_SIZE]) -> [u8; DIGEST_SIZE] {
+    let mut hasher = Sha3_256::new();
+    hasher.update(PREFIX_FS_H1);
+    hasher.update(h);
+    let result = hasher.finalize();
+    result.as_slice().try_into().unwrap()
+}
+
+pub(crate) fn fs_hash2(
+    h_prime: &[u8; DIGEST_SIZE],
+    mseeds: &[[u8; BLOCK_SIZE]],
+) -> [u8; DIGEST_SIZE] {
+    let mut hasher = Sha3_256::new();
+    hasher.update(PREFIX_FS_H2);
+    hasher.update(h_prime);
+    hasher.update(&mseeds.len().to_le_bytes());
+    for mseed in mseeds {
+        hasher.update(mseed);
+    }
+    let result = hasher.finalize();
+    result.as_slice().try_into().unwrap()
+}
+
 pub(crate) fn hash1(delta_rs: &[u64], coms: &[Commitment]) -> [u8; DIGEST_SIZE] {
     let mut hasher = Sha3_256::new();
     hasher.update(PREFIX_H1_DELTA);

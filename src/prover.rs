@@ -74,6 +74,9 @@ impl ProverState {
 }
 
 impl Prover {
+    pub fn get_param(&self) -> Param {
+        self.param
+    }
     /// Create a new prover with a random witness-instance pair,
     /// generated using `rng` according to parameters `param`.
     /// Internally, the master seed is also sampled from the `rng`.
@@ -210,16 +213,18 @@ impl Prover {
             let t_shares = state.step1_state[*e].r_shares.iter().map(|r_share| {
                 // x_share is [x], per c&c and per party i
                 let x_share = xs_tilde.iter().zip(r_share).map(|(x_tilde, r_share)| {
-                    u64::from(1u8 - x_tilde) * r_share
-                        + u64::from(*x_tilde) * (1u64.wrapping_sub(*r_share))
+                    // TODO check if we should be using wrapping_mul
+                    u64::from(1u8 - x_tilde)
+                        .wrapping_mul(*r_share)
+                        .wrapping_add(u64::from(*x_tilde).wrapping_mul(1u64.wrapping_sub(*r_share)))
                 });
                 let t_share: u64 = self
                     .instance
                     .weights
                     .iter()
                     .zip(x_share)
-                    .map(|(w, x)| *w * x)
-                    .sum();
+                    .map(|(w, x)| x.wrapping_mul(*w))
+                    .fold(0, |acc, s| acc.wrapping_add(s));
                 t_share
             });
 

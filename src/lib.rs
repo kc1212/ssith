@@ -1,5 +1,6 @@
 mod consts;
 mod errors;
+pub mod fiat_shamir;
 mod primitives;
 pub mod prover;
 pub mod verifier;
