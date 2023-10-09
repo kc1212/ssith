@@ -301,10 +301,10 @@ impl IProver {
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::thread;
     use crossbeam::channel::unbounded;
     use rand_chacha::ChaChaRng;
     use rand_core::SeedableRng;
+    use std::thread;
 
     #[test]
     fn test_iprover_wrong_chal1() {
@@ -313,18 +313,16 @@ mod test {
         let (tx_p, rx_p) = unbounded();
         let (tx_v, rx_v) = unbounded();
         let mut iprover = IProver::new(&mut rng, param, tx_p, rx_v);
-        
+
         // run the prover in a thread
-        let handle = thread::spawn(move || {
-            iprover.blocking_run()
-        });
-        
+        let handle = thread::spawn(move || iprover.blocking_run());
+
         // we should receive something from the prover automatically
         let _ = rx_p.recv().unwrap();
-        
+
         // then sending the wrong verification message should fail
         tx_v.send(VerifierMsg::Step2(vec![])).unwrap();
-        
+
         // the error should be ProtocolError
         let res = handle.join().unwrap();
         assert_eq!(res, Err(InternalError::ProtocolError));
