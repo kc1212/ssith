@@ -27,7 +27,7 @@ fn write_length<W: io::Write>(writer: &mut W, len: usize) -> io::Result<()> {
 
 // TODO: we could also wrap reader/writer
 /// Wrap a TcpStream into channels
-fn wrap_tcpstream<S, R>(
+pub fn wrap_tcpstream<S, R>(
     stream: TcpStream,
 ) -> (
     Sender<S>,
@@ -113,9 +113,12 @@ where
             }
         };
 
-        // TODO combine the errors
-        let _ = select_loop();
-        read_hdl.join().expect("reader thread panicked")
+        // run select_loop first before joining the handler
+        // but check results for both and return error from select_loop first.
+        let res = select_loop();
+        let hdl_res = read_hdl.join().expect("reader thread panicked");
+        res?;
+        hdl_res
     });
 
     (writer_s, reader_r, shutdown_s, hdl)
@@ -125,7 +128,16 @@ where
 mod test {
     use std::net::TcpListener;
 
+    use rand_chacha::ChaChaRng;
+    use rand_core::SeedableRng;
     use serde::Deserialize;
+
+    use crate::{
+        errors::InternalError,
+        prover::IProver,
+        verifier::{IVerifier, Verifier},
+        Param, ProverMsg, VerifierMsg,
+    };
 
     use super::*;
 
@@ -185,5 +197,45 @@ mod test {
 
         assert_eq!(server_hdl.join().unwrap(), MSG2);
         handle.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn test_tcp_proof() {
+        const ADDR: &str = "127.0.0.1:11112";
+        let param = Param::default();
+
+        // we need some synchronization for the test to run correctly,
+        // i.e., client only connects to server when the server is ready
+        let (s, r) = bounded(1);
+        let verifier_hdl: JoinHandle<bool> = thread::spawn(move || {
+            let listener = TcpListener::bind(ADDR).unwrap();
+            s.send(()).unwrap();
+            let (stream, _) = listener.accept().unwrap();
+
+            let (tx, rx, shutdown_sender, handle) =
+                wrap_tcpstream::<VerifierMsg, ProverMsg>(stream);
+
+            let mut iverifier = IVerifier::new(Verifier::new(param), tx, rx);
+            let mut rng = ChaChaRng::from_entropy();
+            let output = iverifier.blocking_run(&mut rng).unwrap();
+            shutdown_sender.send(()).unwrap();
+            handle.join().unwrap().unwrap();
+            output
+        });
+
+        assert_eq!((), r.recv().unwrap());
+        let stream = TcpStream::connect(ADDR).unwrap();
+
+        // test the wrapper, first receive the first message from server
+        let (tx, rx, shutdown_sender, handle) = wrap_tcpstream::<ProverMsg, VerifierMsg>(stream);
+
+        let mut rng = ChaChaRng::from_entropy();
+        let mut iprover = IProver::new(&mut rng, param, tx, rx);
+
+        iprover.blocking_run().unwrap();
+        shutdown_sender.send(()).unwrap();
+        handle.join().unwrap().unwrap();
+
+        assert!(verifier_hdl.join().unwrap());
     }
 }
