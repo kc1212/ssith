@@ -1,3 +1,4 @@
+use crate::consts::{BLOCK_SIZE, DIGEST_SIZE};
 use crate::errors::InternalError;
 use crate::{Param, ProverMsg, VerifierMsg};
 use crossbeam::channel::{Receiver, Sender};
@@ -16,23 +17,28 @@ impl Verifier {
 
     pub fn step1<R: CryptoRng + RngCore>(&self, rng: &mut R) -> Vec<usize> {
         // chalJ pick tau indices from [M], without rep
-        let chalJ: Vec<_> = {
+        let chal1: Vec<_> = {
             let mut tmp: Vec<_> = (0usize..self.param.cnc_param).collect();
             tmp.shuffle(rng);
             tmp.into_iter().take(self.param.rep_param).collect()
         };
-        chalJ
+        chal1
     }
 
     pub fn step2<R: CryptoRng + RngCore>(&self, rng: &mut R) -> Vec<usize> {
         // chalL pick tau values from [N], with rep
-        let chalL: Vec<_> = (0..self.param.rep_param)
+        let chal2: Vec<_> = (0..self.param.rep_param)
             .map(|_| rng.gen::<usize>() % self.param.party_count)
             .collect();
-        chalL
+        chal2
     }
 
-    pub fn verify(&self) -> bool {
+    pub fn verify(
+        &self,
+        h: &[u8; DIGEST_SIZE],
+        h_prime: &[u8; DIGEST_SIZE],
+        mseeds: &[[u8; BLOCK_SIZE]],
+    ) -> bool {
         // TODO unimplemented
         true
     }
@@ -67,7 +73,6 @@ impl IVerifier {
         };
         self.tx.send(VerifierMsg::Step2(self.verifier.step2(rng)))?;
 
-        // TODO unimplemented
-        Ok(self.verifier.verify())
+        Ok(self.verifier.verify(&h, &h_prime, &mseeds))
     }
 }

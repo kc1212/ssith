@@ -86,7 +86,7 @@ where
                     recv(writer_r) -> msg_res => {
                         // we put these in a function so that we can always
                         // run shutdown later when an error occurs
-                        let mut f = || -> io::Result<()> {
+                        let f = || -> io::Result<()> {
                             let msg = msg_res
                                 .map_err(|e| std::io::Error::new(io::ErrorKind::Other, e))?;
                             let data = bincode::serialize(&msg)
@@ -133,7 +133,6 @@ mod test {
     use serde::Deserialize;
 
     use crate::{
-        errors::InternalError,
         prover::IProver,
         verifier::{IVerifier, Verifier},
         Param, ProverMsg, VerifierMsg,

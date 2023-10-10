@@ -192,16 +192,16 @@ impl Prover {
     pub fn step2(
         &self,
         state: &ProverState,
-        chalJ: &Vec<usize>,
+        chal1: &Vec<usize>,
     ) -> Result<([u8; DIGEST_SIZE], Vec<[u8; BLOCK_SIZE]>), InternalError> {
         // check length of chalJ
-        if chalJ.len() != self.param.rep_param {
+        if chal1.len() != self.param.rep_param {
             return Err(InternalError::BadChallengeLength);
         }
 
         // TODO check that J \subset [M]
 
-        let h_primes = chalJ.iter().map(|e| {
+        let h_primes = chal1.iter().map(|e| {
             let xs_tilde: Vec<_> = self
                 .witness
                 .0
@@ -238,7 +238,7 @@ impl Prover {
         let h_prime = hash4(h_primes);
 
         // find the mseeds that are not in chalJ
-        let mseeds: Vec<_> = chalJ
+        let mseeds: Vec<_> = chal1
             .iter()
             .map(|e| {
                 // TODO: this is wrong, need e \notin J
@@ -283,21 +283,21 @@ impl IProver {
         self.tx.send(ProverMsg::Step1(state.h))?;
 
         // receive the first challenge J
-        let chalJ = match self.rx.recv()? {
-            VerifierMsg::Step1(chalJ) => chalJ,
+        let chal1 = match self.rx.recv()? {
+            VerifierMsg::Step1(c) => c,
             _ => return Err(InternalError::ProtocolError),
         };
 
-        let (h_prime, mseeds) = self.prover.step2(&state, &chalJ)?;
+        let (h_prime, mseeds) = self.prover.step2(&state, &chal1)?;
         self.tx.send(ProverMsg::Step2((h_prime, mseeds)))?;
 
         // receive the second challenge L
-        let chalL = match self.rx.recv()? {
-            VerifierMsg::Step2(chalL) => chalL,
+        let chal2 = match self.rx.recv()? {
+            VerifierMsg::Step2(c) => c,
             _ => return Err(InternalError::ProtocolError),
         };
 
-        self.prover.step3(&state, &chalL);
+        self.prover.step3(&state, &chal2);
 
         Ok(())
     }
