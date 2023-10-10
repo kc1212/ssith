@@ -1,6 +1,7 @@
 mod consts;
 mod errors;
 pub mod fiat_shamir;
+mod io;
 mod primitives;
 pub mod prover;
 pub mod verifier;
@@ -8,7 +9,7 @@ pub mod verifier;
 use consts::*;
 use errors::*;
 use rand_core::{CryptoRng, RngCore};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
 
 #[derive(Debug, Copy, Clone, Serialize)]
@@ -119,13 +120,13 @@ fn hash_witness_instance(witness: &Witness, instance: &Instance) -> [u8; BLOCK_S
     result.as_slice()[..BLOCK_SIZE].try_into().unwrap()
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
 pub enum ProverMsg {
     Step1([u8; DIGEST_SIZE]),
     Step2(([u8; DIGEST_SIZE], Vec<[u8; BLOCK_SIZE]>)),
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
 pub enum VerifierMsg {
     Step1(Vec<usize>),
     Step2(Vec<usize>),
